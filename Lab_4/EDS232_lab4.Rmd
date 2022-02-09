@@ -1,0 +1,45 @@
+---
+title: "Lab_4"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# load libraries
+librarian::shelf(
+  devtools,
+  keras,
+  reticulate,
+  tensorflow)
+
+# show library versions and paths
+session_info() 
+
+# install Python into user space
+(reticulate::miniconda_path()) # show the Python path
+if (!file.exists(reticulate::miniconda_path()))
+  reticulate::install_miniconda()
+
+# install keras with tensorflow
+if (!keras::is_keras_available())
+  keras::install_keras()
+```
+
+Next, tell RStudio to use this version of Python by default. Go to Tools > Global Options > Python and Select… to navigate to the option ~/.local/share/r-miniconda/bin/python. You’ll need to Apply and it should ask you to restart your session, which you’ll need to accept.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
