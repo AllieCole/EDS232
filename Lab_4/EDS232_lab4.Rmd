@@ -7,11 +7,12 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 
 # load libraries
-librarian::shelf(
-  devtools,
-  keras,
-  reticulate,
-  tensorflow)
+librarian::shelf(digest,
+                 tidyverse,
+                 devtools, 
+                 keras, 
+                 reticulate, 
+                 tensorflow)
 
 # show library versions and paths
 session_info() 
@@ -28,11 +29,212 @@ if (!keras::is_keras_available())
 
 Next, tell RStudio to use this version of Python by default. Go to Tools > Global Options > Python and Select… to navigate to the option ~/.local/share/r-miniconda/bin/python. You’ll need to Apply and it should ask you to restart your session, which you’ll need to accept.
 
+```{r}
+# path to folder containing species directories of images
+dir_train_mini <- "/courses/EDS232/inaturalist-2021/train_mini"
+# get list of directories, one per species (n = 10,000 species)
+dirs_spp <- list.dirs(dir_train_mini, recursive = F)
+n_spp <- length(dirs_spp)
+# set seed (for reproducible results) 
+# just before sampling (otherwise get different results)
+# based on your username (unique amongst class)
+Sys.info()[["user"]] %>% # sys.info pulls my user name
+  digest::digest2int() %>% 
+  set.seed()
+i10 <- sample(1:n_spp, 10)
+# show the 10 indices sampled of the 10,000 possible 
+i10
+# show the 10 species directory names
+# saved as a variable here to make for loops below
+species_10 <- basename(dirs_spp)[i10]
+# show the 2 species directory names
+i2 <- i10[1:2]
+species_2 <- basename(dirs_spp)[i2]
+```
+
+```{r}
+# same file paths for both species 2 and species 10
+original_dataset_dir <- "/courses/EDS232/inaturalist-2021/train_mini"
+# base file paths
+base_dir <- "/Users/icole/EDS232/Lab_4"
+```
+
+### File paths and directories
+
+```{r}
+# create base file paths
+train_dir_2 <- file.path(base_dir, "train_2")
+train_dir_10 <- file.path(base_dir, "train_10")
+validation_dir_2 <- file.path(base_dir, "validation_2")
+validation_dir_10 <- file.path(base_dir, "validation_10")
+  
+test_dir_2 <- file.path(base_dir, "test_2")
+test_dir_10 <- file.path(base_dir, "test_10")
+```
 
 
+```{r, eval=FALSE, warning=FALSE}
+# create base directories (train, validate, test) for the two species and the ten species 
+dir.create(train_dir_2)
+dir.create(validation_dir_2)
+dir.create(test_dir_2)
+dir.create(train_dir_10)
+dir.create(validation_dir_10)
+dir.create(test_dir_10)
+
+# create directories for two species
+for (i in 1:length(species_2)){
+  dir.create(file.path(train_dir_2, str_sub(species_2[[i]], start = 1, end = 5)))
+  dir.create(file.path(validation_dir_2, str_sub(species_2[[i]], start = 1, end = 5)))
+  dir.create(file.path(test_dir_2, str_sub(species_2[[i]], start = 1, end = 5)))
+}
+
+# create directories for all ten species
+for (i in 1:length(species_10)){
+  dir.create(file.path(train_dir_10, str_sub(species_10[[i]], start = 1, end = 5)))
+  dir.create(file.path(validation_dir_10, str_sub(species_10[[i]], start = 1, end = 5)))
+  dir.create(file.path(test_dir_10, str_sub(species_10[[i]], start = 1, end = 5)))
+}
+```
+
+### 2 Species directories.
+
+```{r, eval=FALSE}
+# create test, validation, and training groups of images for two species
+for(i in 1:length(species_2)){
+  # create 5 groups of 10 random samples
+  species_samples_2 <- replicate(5, sample(list.files(paste0(original_dataset_dir, "/", species_2[[i]]), full.names = TRUE), replace = FALSE, 10))
+  ## train n = 30 ##
+  train <- rbind(species_samples_2[,1], species_samples_2[,2], species_samples_2[,3])
+  file.copy(from = train, 
+            to = paste0(train_dir_2, "/", str_sub(species_2[[i]], start = 1, end = 5)))
+  ## validation n = 10 ##
+  validate <- species_samples_2[,4]
+  file.copy(from = validate,
+            to = paste0(validation_dir_2, "/", str_sub(species_2[[i]], start = 1, end = 5)))
+  ## train n = 10 ##
+  test <- species_samples_2[,5]
+  file.copy(from = test,
+            to = paste0(test_dir_2, "/", str_sub(species_2[[i]], start = 1, end = 5)))
+}
+```
 
 
+### 10 species directories.
 
+```{r, eval=FALSE}
+# create test, validation, and training groups of images for ten species
+for(i in 1:length(species_10)){
+  species_samples_10 <- replicate(5, sample(list.files(paste0(original_dataset_dir, "/", species_10[[i]]), full.names = TRUE), replace = FALSE, 10))
+  ## train n = 30 ##
+  train <- rbind(species_samples_10[,1], species_samples_10[,2], species_samples_10[,3])
+  file.copy(from = train, 
+            to = paste0(train_dir_10, "/", str_sub(species_10[[i]], start = 1, end = 5)))
+  ## validation n = 10 ##
+  validate <- species_samples_10[,4]
+  file.copy(from = validate,
+            to = paste0(validation_dir_10, "/", str_sub(species_10[[i]], start = 1, end = 5)))
+  ## train n = 10 ##
+  test <- species_samples_10[,5]
+  file.copy(from = test,
+            to = paste0(test_dir_10, "/", str_sub(species_10[[i]], start = 1, end = 5)))
+}
+```
+
+## Preprocessing the data for two species
+
+```{r}
+# All images will be rescaled by 1/255
+test_datagen <- image_data_generator(rescale = 1/255)
+train_datagen <- image_data_generator(rescale = 1/255)
+validation_datagen <- image_data_generator(rescale = 1/255)
+train_generator_2 <- flow_images_from_directory(
+  # This is the target directory
+  train_dir_2,
+  # This is the data generator
+  train_datagen,
+  # All images will be resized to 150x150
+  target_size = c(150, 150),
+  batch_size = 5,
+  # Since we use binary_crossentropy loss, we need binary labels
+  class_mode = "binary") 
+validation_generator_2 <- flow_images_from_directory(
+  validation_dir_2,
+  validation_datagen,
+  target_size = c(150, 150),
+  batch_size = 5,
+  class_mode = "binary")
+```
+Found 53 images belonging to 2 classes.
+Found 20 images belonging to 2 classes. 
+what does the above mean??
+
+## Preprocessing the data for ten species
+
+```{r}
+# Since we use categorical_crossentropy loss for 10 species, we need binary labels
+train_generator_10 <- flow_images_from_directory(
+  train_dir_10,
+  train_datagen,
+  target_size = c(150, 150),
+  batch_size = 5,
+  class_mode = "categorical") 
+validation_generator_10 <- flow_images_from_directory(
+  validation_dir_10,
+  validation_datagen,
+  target_size = c(150, 150),
+  batch_size = 5,
+  class_mode = "categorical")
+```
+
+
+# 1. Two Species (binary classification) using neural net
+
+## Building the network
+
+```{r}
+model_nn <- keras_model_sequential() %>% 
+  layer_dense(units = 16, activation = "relu", input_shape = c(150, 150, 3)) %>%
+  layer_flatten() %>% 
+  layer_dense(units = 16, activation = "relu") %>% 
+  layer_dense(units =  1, activation = "sigmoid")
+# 3 in input_shape refers to RGB bands
+```
+
+
+```{r}
+model_nn %>% compile(
+  optimizer = "rmsprop",
+  loss      = "binary_crossentropy",
+  metrics   = c("accuracy"))
+```
+
+
+```{r}
+history_nn <- model_nn %>% fit(
+    train_generator_2,
+    steps_per_epoch = 5,
+    epochs = 30,
+    validation_data = validation_generator_2,
+    validation_steps = 5)
+```
+
+```{r}
+plot(history_nn)
+```
+
+## Evaluate Model
+
+```{r}
+test_generator_2 <- flow_images_from_directory(
+  test_dir_2,
+  test_datagen,
+  target_size = c(150, 150),
+  batch_size = 5,
+  class_mode = "binary"
+)
+model_nn %>% evaluate(test_generator_2, steps = 4) # changed steps from 30 to 4 
+```
 
 
 
